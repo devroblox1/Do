@@ -1,34 +1,46 @@
-local player = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
-local aimRange = 100
-local smoothness = 0.15
 
-function getClosestTarget()
-    local closest = nil
-    local shortest = aimRange
+local FOV = 120 -- pixels around crosshair
+local smoothness = 0.4 -- higher = stronger snap
+local maxDistance = 200
 
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local pos = p.Character.HumanoidRootPart.Position
-            local distance = (pos - player.Character.HumanoidRootPart.Position).Magnitude
+local function getClosestTarget()
+    local closestPart = nil
+    local closestDistance = FOV
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character and plr.Character:FindFirstChild("Head") then
+            local head = plr.Character.Head
             
-            if distance < shortest then
-                shortest = distance
-                closest = p.Character.HumanoidRootPart
+            local screenPos, visible = camera:WorldToViewportPoint(head.Position)
+            if visible then
+                local mousePos = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+                local targetPos = Vector2.new(screenPos.X, screenPos.Y)
+                
+                local distance = (mousePos - targetPos).Magnitude
+                
+                local worldDistance = (head.Position - camera.CFrame.Position).Magnitude
+                
+                if distance < closestDistance and worldDistance < maxDistance then
+                    closestDistance = distance
+                    closestPart = head
+                end
             end
         end
     end
 
-    return closest
+    return closestPart
 end
 
-game:GetService("RunService").RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function()
     local target = getClosestTarget()
-    
+
     if target then
-        local direction = (target.Position - camera.CFrame.Position).Unit
-        local newCF = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + direction)
-        
-        camera.CFrame = camera.CFrame:Lerp(newCF, smoothness)
+        local aimCF = CFrame.new(camera.CFrame.Position, target.Position)
+        camera.CFrame = camera.CFrame:Lerp(aimCF, smoothness)
     end
 end)
