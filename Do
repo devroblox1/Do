@@ -2,45 +2,136 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local character = player.Character or player.CharacterAdded:Wait()
+local root = character:WaitForChild("HumanoidRootPart")
 
-local FOV = 120 -- pixels around crosshair
-local smoothness = 0.4 -- higher = stronger snap
-local maxDistance = 200
+local locking = false
+local targetPlayer = nil
+local MAX_DISTANCE = 150
 
-local function getClosestTarget()
-    local closestPart = nil
-    local closestDistance = FOV
+-- Find best target
+local function getClosestPlayer()
+	local closest = nil
+	local shortestDistance = MAX_DISTANCE
 
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player and plr.Character and plr.Character:FindFirstChild("Head") then
-            local head = plr.Character.Head
-            
-            local screenPos, visible = camera:WorldToViewportPoint(head.Position)
-            if visible then
-                local mousePos = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-                local targetPos = Vector2.new(screenPos.X, screenPos.Y)
-                
-                local distance = (mousePos - targetPos).Magnitude
-                
-                local worldDistance = (head.Position - camera.CFrame.Position).Magnitude
-                
-                if distance < closestDistance and worldDistance < maxDistance then
-                    closestDistance = distance
-                    closestPart = head
-                end
-            end
-        end
-    end
+	for _, other in pairs(Players:GetPlayers()) do
+		if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+			local otherRoot = other.Character.HumanoidRootPart
+			local distance = (otherRoot.Position - root.Position).Magnitude
 
-    return closestPart
+			if distance < shortestDistance then
+				shortestDistance = distance
+				closest = other
+			end
+		end
+	end
+
+	return closest
+end
+
+-- Toggle lock
+function ToggleLock()
+	locking = not locking
+
+	if locking then
+		targetPlayer = getClosestPlayer()
+	else
+		targetPlayer = nil
+	end
 end
 
 RunService.RenderStepped:Connect(function()
-    local target = getClosestTarget()
+	if locking and targetPlayer then
+		local targetCharacter = targetPlayer.Character
+		if targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart") then
 
-    if target then
-        local aimCF = CFrame.new(camera.CFrame.Position, target.Position)
-        camera.CFrame = camera.CFrame:Lerp(aimCF, smoothness)
-    end
+			local targetPos = targetCharacter.HumanoidRootPart.Position
+
+			-- Smooth but strong tracking
+			local look = CFrame.lookAt(root.Position, targetPos)
+			root.CFrame = root.CFrame:Lerp(look, 0.35)
+
+		else
+			targetPlayer = nil
+		end
+	end
+end)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local target = nil
+local TRACK_STRENGTH = 0.6 -- higher = stronger tracking
+
+-- Call this from your lock system
+function SetTarget(plr)
+	target = plr
+end
+
+RunService.RenderStepped:Connect(function()
+	if target and target.Character then
+		local root = target.Character:FindFirstChild("HumanoidRootPart")
+
+		if root then
+			-- Predict movement
+			local predictedPosition = root.Position + (root.Velocity * 0.1)
+
+			local desired = CFrame.new(camera.CFrame.Position, predictedPosition)
+
+			-- Smooth strong tracking
+			camera.CFrame = camera.CFrame:Lerp(desired, TRACK_STRENGTH)
+		end
+	end
+end)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local event = ReplicatedStorage:WaitForChild("M1AttackEvent")
+
+local DAMAGE = 8
+local STUN_TIME = 0.5
+
+event.OnServerEvent:Connect(function(player)
+
+	local character = player.Character
+	if not character then return end
+	
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	for _, other in pairs(game.Players:GetPlayers()) do
+		
+		if other ~= player and other.Character then
+			
+			local enemyRoot = other.Character:FindFirstChild("HumanoidRootPart")
+			local enemyHumanoid = other.Character:FindFirstChild("Humanoid")
+			
+			if enemyRoot and enemyHumanoid then
+				
+				local distance = (enemyRoot.Position - root.Position).Magnitude
+				
+				if distance < 6 then
+					
+					enemyHumanoid:TakeDamage(DAMAGE)
+					
+					local oldSpeed = enemyHumanoid.WalkSpeed
+					local oldJump = enemyHumanoid.JumpPower
+					
+					enemyHumanoid.WalkSpeed = 0
+					enemyHumanoid.JumpPower = 0
+					
+					task.wait(STUN_TIME)
+					
+					enemyHumanoid.WalkSpeed = oldSpeed
+					enemyHumanoid.JumpPower = oldJump
+					
+				end
+				
+			end
+			
+		end
+		
+	end
+
 end)
